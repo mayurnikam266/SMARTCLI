@@ -54,9 +54,10 @@ You are a DevOps assistant. Respond in this exact JSON format:
 }}
 
 ⚠️ RULES:
-- Do NOT add anything outside this JSON.
+- write response and suggession in short only in JSON.
 - No markdown, no text outside.
 - Only one shell command, one line.
+- nothing write outside JSON.
 
 Query: "{query}"
 """.strip()
@@ -64,14 +65,21 @@ Query: "{query}"
 # 🧾 Extract JSON response
 def extract_command_and_response(llm_output):
     try:
-        parsed = json.loads(llm_output)
+        json_match = re.search(r"\{.*\"command\"\s*:\s*.*\}", llm_output, re.DOTALL)
+        if not json_match:
+            return None, None
+
+        json_text = json_match.group(0)
+
+        # ✅ Parse JSON
+        parsed = json.loads(json_text)
         command = parsed.get("command", "").strip()
         explanation = parsed.get("response", "").strip()
         return command, explanation
-    except json.JSONDecodeError:
-        return None, None
 
-# 📡 Call LLM API
+    except Exception as e:
+        print(f"❌ JSON parse failed: {e}")
+        return None, None
 
 def get_llm_response(prompt, config):
     provider = config.get("llm_provider")
