@@ -63,7 +63,7 @@ def main():
 
     # Save the config
     with open("config.yaml", "w") as f:
-        yaml.dump(config_data, f)
+        yaml.dump(config_data, f, default_style='"')
 
     print("\n Config saved to config.yaml\nYou can now run: python main.py")
 
