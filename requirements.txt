@@ -1,0 +1,12 @@
+# Core functionality
+pyyaml
+requests
+openai
+google-generativeai
+
+# Terminal UX
+rich
+
+# Optional Dev Tools
+importlib-metadata
+pytest
