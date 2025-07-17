@@ -58,8 +58,12 @@ def main():
         config_data["model"] = input("Enter model name for custom engine: ").strip()
 
     temperature = input("Set temperature (0.0 - 1.0, default 0.7): ").strip()
-    if temperature:
+    try:
         config_data["temperature"] = float(temperature)
+    except ValueError:
+        print("⚠️ Invalid temperature, setting default to 0.7")
+        config_data["temperature"] = 0.7
+
 
     # Save the config
     with open("config.yaml", "w") as f:
