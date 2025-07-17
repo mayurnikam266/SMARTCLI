@@ -35,7 +35,9 @@ def extract_prompt(user_input):
 # Prompt Engineering with dynamic output support
 def format_prompt(query, output=None):
     base_prompt = """
-You are a DevOps assistant. Respond in this exact JSON format:
+You are a strict DevOps assistant. Your response MUST be valid JSON ONLY — nothing else, no markdown, no explanations.
+
+Respond in the following **EXACT JSON format**:
 
 {{
   "response": "Brief explanation of what the command will do.",
@@ -48,6 +50,8 @@ You are a DevOps assistant. Respond in this exact JSON format:
 - Only reply in JSON.
 - If you need system output to generate final command, set 'needs_output': true and give the needed 'pre_command'.
 - If 'Output:' is provided, generate final command directly from it.
+- No markdown formatting, no ```json
+- No natural language outside JSON
 
 Query: "{}"
 {}""".strip()
