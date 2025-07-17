@@ -6,7 +6,7 @@ import importlib
 import json
 from pathlib import Path
 
-#  Load configuration
+# Load configuration
 def load_config():
     config_file = Path("config.yaml")
     if not config_file.exists():
@@ -34,7 +34,7 @@ def extract_prompt(user_input):
 
 # Prompt Engineering with dynamic output support
 def format_prompt(query, output=None):
-    return f"""
+    base_prompt = """
 You are a DevOps assistant. Respond in this exact JSON format:
 
 {{
@@ -49,9 +49,11 @@ You are a DevOps assistant. Respond in this exact JSON format:
 - If you need system output to generate final command, set 'needs_output': true and give the needed 'pre_command'.
 - If 'Output:' is provided, generate final command directly from it.
 
-Query: "{query}"
-{f'Output:\n{output}' if output else ''}
-""".strip()
+Query: "{}"
+{}""".strip()
+
+    output_section = 'Output:\n{}'.format(output) if output else ''
+    return base_prompt.format(query, output_section)
 
 # Extract JSON parts from LLM response
 def parse_llm_json(output):
