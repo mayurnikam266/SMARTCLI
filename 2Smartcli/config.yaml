@@ -1,3 +1,4 @@
-"api_key":
-"llm_provider": 
-"model": 
+"api_key": "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"
+"llm_provider": "groq"
+"model": "llama-3.1-8b-instant"
+"temperature": !!float "0.7"
