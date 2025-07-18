@@ -4,195 +4,167 @@ import subprocess
 import re
 import importlib
 import json
-import logging
 from pathlib import Path
-from typing import Dict, Optional, List
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+# Try to import readline for pre-filled editable input
+try:
+    import readline
+except ImportError:
+    readline = None
 
-class CLIAssistant:
-    def __init__(self, config_path: str = "config.yaml"):
-        self.config_path = Path(config_path)
-        self.config = self.load_config()
-        self.chat_history: List[Dict[str, str]] = []
-        self.max_tokens = 3500
+# Terminal colors
+try:
+    from colorama import Fore, Style, init
+    init(autoreset=True)
+except ImportError:
+    print("⚠️ Please install 'colorama' with: pip install colorama")
+    exit(1)
 
-    def load_config(self) -> Dict:
-        """Load configuration from file or environment variables."""
-        try:
-            if not self.config_path.exists():
-                logger.warning("Config file not found, using default settings.")
-                return {"llm_provider": os.getenv("LLM_PROVIDER", "default")}
-            with open(self.config_path, 'r') as f:
-                return yaml.safe_load(f) or {}
-        except Exception as e:
-            logger.error(f"Failed to load config: {e}")
-            return {"llm_provider": "default"}
+#  Load configuration
+def load_config():
+    config_file = Path("config.yaml")
+    if not config_file.exists():
+        print("❌ Config file not found. Please run setup.py first.")
+        exit(1)
+    with open(config_file, 'r') as f:
+        return yaml.safe_load(f)
 
-    def get_total_tokens(self) -> int:
-        """Estimate total tokens in chat history (simplified word count)."""
-        return sum(len(m["content"].split()) for m in self.chat_history)
+# Chat memory
+chat_history = []
 
-    def clear_memory(self) -> None:
-        """Clear chat history."""
-        self.chat_history = []
-        logger.info("Chat memory cleared.")
+def get_total_tokens():
+    return sum(len(m["content"].split()) for m in chat_history)
 
-    def extract_prompt(self, user_input: str) -> Optional[str]:
-        """Extract prompt between *** markers."""
-        pattern = r"\*{3}\s*(.*?)\s*\*{3}"
-        match = re.search(pattern, user_input, re.DOTALL)
-        return match.group(1).strip() if match else None
+def clear_memory():
+    global chat_history
+    chat_history = []
+    print("🧠 Chat memory cleared.\n")
 
-    def format_prompt(self, query: str, output: Optional[str] = None) -> str:
-        """Format prompt for LLM with JSON response requirement."""
-        base_prompt = """
-You are a DevOps CLI assistant. Respond in valid JSON only:
+#  Execute command with feedback
+def execute_with_feedback(cmd):
+    print(f"📤 Running: {cmd}")
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    print(f"📥 Output:\n{result.stdout.strip()}")
+    return result.stdout.strip()
+
+#  Match `*** prompt ***`
+def extract_prompt(user_input):
+    pattern = r"\*{3}\s*(.*?)\s*\*{3}"
+    match = re.search(pattern, user_input)
+    return match.group(1).strip() if match else None
+
+#  Prompt Engineering
+def format_prompt(query):
+    return f"""
+You are a DevOps assistant. Respond in this exact JSON format:
+
 {{
-  "response": "What the command will do.",
-  "command": "Shell command to run (empty if more input needed).",
-  "needs_output": false,
-  "pre_command": "Command to run for more info (if needed).",
-  "next_question": "Ask for missing info (e.g., AMI ID), or empty."
+  "response": "Brief explanation of what the command will do.",
+  "command": "ONLY the exact shell command without any explanation or extra output."
 }}
 
-Rules:
-1. Ask for missing info step-by-step via next_question.
-2. Set needs_output: true and provide pre_command if system output is needed.
-3. Only provide command when all inputs are collected.
-4. Do not assume values; ask clearly.
+⚠️ RULES:
+- write response and suggestion in short only in JSON.
+- No markdown, no text outside.
+- Only one shell command, one line.
+- nothing write outside JSON.
 
-Query: "{0}"
-{1}"""
-        output_section = f"Output:\n{output}" if output else ""
-        return base_prompt.format(query, output_section).strip()
+Query: "{query}"
+""".strip()
 
-    def parse_llm_json(self, output: str) -> Optional[Dict]:
-        """Parse JSON from LLM response."""
+# 🧾 Extract JSON response
+def extract_command_and_response(llm_output):
+    try:
+        json_match = re.search(r"\{.*\"command\"\s*:\s*.*\}", llm_output, re.DOTALL)
+        if not json_match:
+            return None, None
+
+        json_text = json_match.group(0)
+        parsed = json.loads(json_text)
+        command = parsed.get("command", "").strip()
+        explanation = parsed.get("response", "").strip()
+        return command, explanation
+
+    except Exception as e:
+        print(f"❌ JSON parse failed: {e}")
+        return None, None
+
+def get_llm_response(prompt, config):
+    provider = config.get("llm_provider")
+    try:
+        engine_module = importlib.import_module(f"llm_engines.{provider}_llm")
+        return engine_module.get_response(prompt, config)
+    except Exception as e:
+        return f"LLM error: {e}"
+
+# 🧠 Pre-fill terminal input with editable default
+def input_with_prefill(prompt_text, default_text):
+    if readline:
+        readline.set_startup_hook(lambda: readline.insert_text(default_text))
         try:
-            match = re.search(r'\{.*\}', output, re.DOTALL)
-            if not match:
-                logger.error("No JSON found in LLM response.")
-                return None
-            return json.loads(match.group(0))
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON: {e}")
-            return None
+            return input(prompt_text)
+        finally:
+            readline.set_startup_hook(None)
+    else:
+        print("⚠️ Pre-filled editing not supported on this OS.")
+        return input(f"{prompt_text} (type manually): ")
 
-    def get_llm_response(self, prompt: str) -> Dict:
-        """Get response from LLM engine."""
-        provider = self.config.get("llm_provider", "default")
-        try:
-            engine_module = importlib.import_module(f"llm_engines.{provider}_llm")
-            response = engine_module.get_response(prompt, self.config)
-            return {"response": response, "error": None}
-        except Exception as e:
-            logger.error(f"LLM error: {e}")
-            return {"response": None, "error": str(e)}
+#  Main Loop
+def main():
+    config = load_config()
+    print(Fore.GREEN + "🤖 Smart Terminal Assistant Ready (type 'exit' to quit)\n")
 
-    def run_shell_command(self, cmd: str) -> Optional[str]:
-        """Run shell command safely and return output."""
-        try:
-            result = subprocess.run(
-                cmd, shell=False, capture_output=True, text=True, check=True
-            )
-            output = result.stdout.strip()
-            if output:
-                logger.info(f"Command output: {output}")
-            if result.stderr:
-                logger.warning(f"Command stderr: {result.stderr.strip()}")
-            return output
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed: {e.stderr}")
-            return None
-        except Exception as e:
-            logger.error(f"Exception during command execution: {e}")
-            return None
+    global chat_history
 
-    def validate_command(self, cmd: str) -> bool:
-        """Validate shell command (basic whitelist example)."""
-        allowed_commands = ["aws", "kubectl", "docker", "ls", "cat"]
-        return any(cmd.startswith(allowed) for allowed in allowed_commands)
+    while True:
+        user_input = input(">>> ").strip()
 
-    def run(self) -> None:
-        """Main execution loop."""
-        logger.info("Smart Terminal Assistant Ready (type 'exit' to quit)")
-        try:
-            while True:
-                user_input = input(">>> ").strip()
+        if user_input.lower() == "exit":
+            break
 
-                if user_input.lower() == "exit":
-                    logger.info("Exiting CLI assistant.")
-                    break
+        if user_input.lower() == "[%clear%]":
+            clear_memory()
+            continue
 
-                if user_input.lower() == "[%clear%]":
-                    self.clear_memory()
-                    continue
+        query = extract_prompt(user_input)
+        if query:
+            chat_history.append({"role": "user", "content": query})
 
-                query = self.extract_prompt(user_input)
-                if query:
-                    if self.get_total_tokens() > self.max_tokens:
-                        logger.warning("Context memory full. Use [%clear%] to reset.")
-                        continue
+            if get_total_tokens() > 3500:
+                print("⚠️ Context memory full. Use [%clear%] to reset.\n")
+                continue
 
-                    self.chat_history.append({"role": "user", "content": query})
-                    prompt = self.format_prompt(query)
-                    llm_result = self.get_llm_response(prompt)
+            print(Fore.YELLOW + f"🧠 Querying: {query}\n")
+            raw_prompt = format_prompt(query)
+            response = get_llm_response(raw_prompt, config)
+            chat_history.append({"role": "assistant", "content": response})
 
-                    if llm_result["error"]:
-                        print(json.dumps({"error": llm_result["error"]}))
-                        continue
+            print(f"\n🤖 LLM Response:\n{response}\n")
 
-                    parsed = self.parse_llm_json(llm_result["response"])
-                    if not parsed:
-                        print(json.dumps({"error": "Invalid LLM response format"}))
-                        continue
+            command, explanation = extract_command_and_response(response)
 
-                    print(json.dumps(parsed, indent=2))
-                    if parsed.get("needs_output"):
-                        pre_cmd = parsed.get("pre_command")
-                        if not self.validate_command(pre_cmd):
-                            print(json.dumps({"error": "Invalid pre_command"}))
-                            continue
-                        confirm = input(f"Run `{pre_cmd}` to gather info? [y/N]: ").lower()
-                        if confirm == "y":
-                            pre_output = self.run_shell_command(pre_cmd)
-                            if pre_output is None:
-                                print(json.dumps({"error": "Failed to run pre_command"}))
-                                continue
-                            follow_up_prompt = self.format_prompt(query, pre_output)
-                            follow_up_result = self.get_llm_response(follow_up_prompt)
-                            if follow_up_result["error"]:
-                                print(json.dumps({"error": follow_up_result["error"]}))
-                                continue
-                            follow_parsed = self.parse_llm_json(follow_up_result["response"])
-                            if follow_parsed and follow_parsed.get("command"):
-                                print(json.dumps(follow_parsed, indent=2))
-                                if self.validate_command(follow_parsed["command"]):
-                                    confirm = input(f"Run `{follow_parsed['command']}`? [y/N]: ").lower()
-                                    if confirm == "y":
-                                        self.run_shell_command(follow_parsed["command"])
-                                else:
-                                    print(json.dumps({"error": "Invalid command"}))
-                            else:
-                                print(json.dumps({"error": "No valid command in follow-up response"}))
-                    elif parsed.get("command"):
-                        if self.validate_command(parsed["command"]):
-                            confirm = input(f"Run `{parsed['command']}`? [y/N]: ").lower()
-                            if confirm == "y":
-                                self.run_shell_command(parsed["command"])
-                        else:
-                            print(json.dumps({"error": "Invalid command"}))
+            if command:
+                print(Fore.CYAN + f"💡 Explanation: {explanation}")
+                print(Fore.MAGENTA + Style.BRIGHT + f"💡 Suggested Command: {command}\n")
+
+                confirm = input("⚠️ Run this command? (y/N/c for custom): ").lower()
+
+                if confirm == "y":
+                    subprocess.run(command, shell=True)
+
+                elif confirm == "c":
+                    edited_cmd = input_with_prefill("✍️ Edit command: ", command).strip()
+                    if edited_cmd:
+                        subprocess.run(edited_cmd, shell=True)
                     else:
-                        print(json.dumps({"info": "No command to run"}))
+                        print("❌ No command entered. Skipped.\n")
                 else:
-                    print(json.dumps({"error": "Invalid prompt format. Use *** prompt ***"}))
-        except KeyboardInterrupt:
-            logger.info("Received interrupt, exiting gracefully.")
-            print(json.dumps({"info": "Exiting due to user interrupt"}))
+                    print("❌ Skipped.\n")
+            else:
+                print("⚠️ Could not extract a valid command from LLM response.\n")
+        else:
+            subprocess.run(user_input, shell=True)
 
+# 🔁 Run Main
 if __name__ == "__main__":
-    assistant = CLIAssistant()
-    assistant.run()
+    main()
