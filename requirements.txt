@@ -4,9 +4,12 @@ requests
 openai
 google-generativeai
 
-# Terminal UX
+
 rich
 
-# Optional Dev Tools
 importlib-metadata
 pytest
+colorama
+prompt_toolkit
+questionary
+setuptools

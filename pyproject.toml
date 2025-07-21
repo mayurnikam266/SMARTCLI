@@ -1,0 +1,29 @@
+[project]
+name = "smartcli"
+version = "0.1.0"
+description = "🤖 Terminal SmartCLI Assistant"
+authors = [
+  { name = "Mayur Nikam", email = "mayur.nikam.rha@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.7"
+
+dependencies = [
+  "pyyaml>=5.1",
+  "requests>=2.20",
+  "openai>=0.27.0",
+  "google-generativeai>=0.3.2",
+  "rich>=10.0",
+  "importlib-metadata>=4.0; python_version<'3.8'",
+  "pytest>=6.0",
+  "colorama>=0.4",
+  "prompt_toolkit>=2.0",
+  "questionary>=1.5"
+]
+
+[project.scripts]
+scli = "smartcli.scli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

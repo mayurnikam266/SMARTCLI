@@ -1,3 +1,4 @@
 api_key: 
 llm_provider: 
 model: 
+temperature: 0.7

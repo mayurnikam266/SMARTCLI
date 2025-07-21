@@ -1,6 +1,6 @@
 from openai import OpenAI
 
-def get_response(prompt, config):
+def get_response(prompt, config, history=None):
     try:
         client = OpenAI(
             api_key=config.get("api_key"),
@@ -9,9 +9,12 @@ def get_response(prompt, config):
         model = config.get("model", "llama3-8b")
         temperature = config.get("temperature", 0.7)
 
+        messages = history if history else []
+        messages.append({"role": "user", "content": prompt})
+
         response = client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             temperature=temperature
         )
         return response.choices[0].message.content.strip()
