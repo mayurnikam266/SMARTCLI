@@ -1,5 +1,10 @@
 #!/bin/bash
-
+#
+# Production Installer for SmartCLI
+# This script installs the 'scli' tool on a user's system, making it
+# feel like a native application by managing a Docker container behind the scenes.
+#
+# Usage: curl -sSL https://raw.githubusercontent.com/mayurnikam266/SMARTCLI/main/install.sh | sudo bash
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
@@ -64,13 +69,11 @@ if [ -f "\$(pwd)/\${CONFIG_FILE}" ]; then
 fi
 
 # Execute the command inside the Docker container.
-# --rm      : Cleans up the container after it exits.
-# -i        : Keeps STDIN open for interactive sessions.
-# -t        : Allocates a pseudo-TTY for a proper terminal experience.
-# -v ...    : Mounts the user's current directory to /app/data for file operations.
-# "\$@"     : Passes all user-provided arguments (e.g., 'scli-chat') to the container.
+# This version mounts the host's binary directories to allow executing any host command.
 exec docker run --rm -it \\
   "\${CONFIG_MOUNT_ARGS[@]}" \\
+  -v /bin:/host/bin:ro \\
+  -v /usr/bin:/host/usr/bin:ro \\
   -v "\$(pwd):/app/data" \\
   "\${IMAGE}" "\$@"
 EOF
@@ -82,5 +85,6 @@ print_info "Wrapper script created and made executable."
 # --- Final Message ---
 print_success "SmartCLI has been installed successfully!"
 print_info "You can now run the tool from any terminal by typing: scli"
-print_info "Example: scli scli-chat"
+print_info "Example: scli help"
+print_info "IMPORTANT: Before first use, create a 'config.yaml' file in your project directory."
 
